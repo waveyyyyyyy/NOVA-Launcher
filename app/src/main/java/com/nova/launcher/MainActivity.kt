@@ -154,7 +154,7 @@ private fun NovaHome() {
                     Spacer(Modifier.height(12.dp))
                     LazyVerticalGrid(columns = GridCells.Fixed(4), contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                         items(filtered, key = { it.packageName }) { app ->
-                            AppShortcut(app) { launchApp(context, app.packageName) }
+                            AppShortcut(app) { bounds -> launchApp(context, app.packageName, launchSourceView, bounds) }
                         }
                     }
                 }
