@@ -1,5 +1,6 @@
 package com.nova.launcher
 
+import android.app.ActivityOptions
 import android.content.Intent
 import android.graphics.drawable.Drawable
 import android.os.Bundle
@@ -31,10 +32,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.geometry.Rect
 import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -59,6 +64,7 @@ private data class LaunchableApp(val label: String, val packageName: String, val
 @Composable
 private fun NovaHome() {
     val context = LocalContext.current
+    val launchSourceView = LocalView.current
     var allApps by remember { mutableStateOf(emptyList<LaunchableApp>()) }
     var drawerOpen by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -109,7 +115,7 @@ private fun NovaHome() {
                     Text("Your space. Your flow.", color = Color.White.copy(.9f), fontSize = 14.sp)
                     Spacer(Modifier.height(20.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        allApps.take(4).forEach { app -> AppShortcut(app) { launchApp(context, app.packageName) } }
+                        allApps.take(4).forEach { app -> AppShortcut(app) { bounds -> launchApp(context, app.packageName, launchSourceView, bounds) } }
                     }
                     Spacer(Modifier.height(22.dp))
                     Surface(
@@ -158,10 +164,11 @@ private fun NovaHome() {
 }
 
 @Composable
-private fun AppShortcut(app: LaunchableApp, onClick: () -> Unit) {
+private fun AppShortcut(app: LaunchableApp, onClick: (Rect) -> Unit) {
+    var iconBounds by remember { mutableStateOf(Rect.Zero) }
     val bitmap = remember(app.packageName) { app.icon.toBitmap(144, 144).asImageBitmap() }
     Column(
-        Modifier.width(72.dp).clip(RoundedCornerShape(18.dp)).clickable(onClick = onClick).padding(vertical = 5.dp),
+        Modifier.width(72.dp).onGloballyPositioned { iconBounds = it.boundsInWindow() }.clip(RoundedCornerShape(18.dp)).clickable { onClick(iconBounds) }.padding(vertical = 5.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         androidx.compose.foundation.Image(bitmap, contentDescription = app.label, modifier = Modifier.size(52.dp).clip(RoundedCornerShape(15.dp)))
@@ -170,7 +177,23 @@ private fun AppShortcut(app: LaunchableApp, onClick: () -> Unit) {
     }
 }
 
-private fun launchApp(context: android.content.Context, packageName: String) {
-    val intent = context.packageManager.getLaunchIntentForPackage(packageName)
-    if (intent != null) context.startActivity(intent)
+private fun launchApp(
+    context: android.content.Context,
+    packageName: String,
+    sourceView: android.view.View,
+    iconBounds: Rect
+) {
+    val intent = context.packageManager.getLaunchIntentForPackage(packageName) ?: return
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    // Expand from the tapped shortcut; Android/OEM controls the final timing.
+    val x = iconBounds.left.toInt().coerceAtLeast(0)
+    val y = iconBounds.top.toInt().coerceAtLeast(0)
+    val width = iconBounds.width.toInt().coerceAtLeast(1)
+    val height = iconBounds.height.toInt().coerceAtLeast(1)
+    val options = ActivityOptions.makeScaleUpAnimation(sourceView, x, y, width, height).toBundle()
+    try {
+        context.startActivity(intent, options)
+    } catch (_: Exception) {
+        context.startActivity(intent)
+    }
 }
